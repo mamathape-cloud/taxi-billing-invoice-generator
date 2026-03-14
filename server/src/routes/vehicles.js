@@ -1,7 +1,7 @@
 import express from "express";
 import { body, param, query, validationResult } from "express-validator";
 import { prisma } from "../prisma.js";
-import { PaymentStatus } from "@prisma/client";
+//import { PaymentStatus } from "@prisma/client";
 
 export const vehiclesRouter = express.Router();
 
