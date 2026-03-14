@@ -1,6 +1,5 @@
 import express from "express";
 import { prisma } from "../prisma.js";
-import { PaymentStatus } from "@prisma/client";
 
 export const dashboardRouter = express.Router();
 
