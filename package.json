@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "concurrently -n server,client -c blue,green \"npm:dev --workspace server\" \"npm:dev --workspace client\"",
     "build": "npm run build --workspace server && npm run build --workspace client",
+   "start": "npm run start --workspace server",
     "lint": "npm run lint --workspace server && npm run lint --workspace client"
   },
   "devDependencies": {
