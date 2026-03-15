@@ -1,6 +1,6 @@
 import { getToken, clearToken } from "./auth.js";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ||  "https://taxi-billing-server-production.up.railway.app";
 
 async function request(path, { method = "GET", body, headers } = {}) {
   const token = getToken();
