@@ -30,11 +30,14 @@ app.use(
     credentials: true,
   })
 );
+
 */
 
 app.use(
   cors({
-    origin: true,      // reflect request Origin header
+    origin: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   })
 );
