@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import path from "path";
+import fs from "fs";
 
 import { authRouter } from "./routes/auth.js";
 import { companyRouter } from "./routes/company.js";
@@ -17,7 +18,6 @@ const app = express();
 
 /*
 CORS configuration
-Allows Vercel frontend + local development
 */
 app.use(
   cors({
@@ -25,6 +25,8 @@ app.use(
       "http://localhost:5173",
       "https://taxi-billing-invoice-generator-clie.vercel.app",
     ],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   })
 );
@@ -32,23 +34,29 @@ app.use(
 app.use(express.json({ limit: "2mb" }));
 
 /*
-Root route (useful to confirm API is running)
+Root route
 */
 app.get("/", (req, res) => {
   res.json({ message: "Taxi Billing API Running 🚕" });
 });
 
 /*
-Health check (used by Railway sometimes)
+Health check
 */
 app.get("/health", (req, res) => {
   res.json({ ok: true });
 });
 
 /*
-Static uploads
+Uploads folder (fix for Railway)
 */
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+const uploadsDir = path.join(process.cwd(), "uploads");
+
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+app.use("/uploads", express.static(uploadsDir));
 
 /*
 Public routes
@@ -56,7 +64,7 @@ Public routes
 app.use("/auth", authRouter);
 
 /*
-Portal routes (public)
+Portal routes
 */
 app.use("/portal/company", companyRouter);
 app.use("/portal/customers", customersRouter);
@@ -80,7 +88,6 @@ app.use("/reports", reportsRouter);
 /*
 Error handler
 */
-// eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({
