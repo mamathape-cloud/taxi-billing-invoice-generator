@@ -15,26 +15,60 @@ import { requireAuth } from "./middleware/auth.js";
 
 const app = express();
 
-app.use(cors());
+/*
+CORS configuration
+Allows Vercel frontend + local development
+*/
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "https://taxi-billing-invoice-generator-clie.vercel.app",
+    ],
+    credentials: true,
+  })
+);
+
 app.use(express.json({ limit: "2mb" }));
 
-app.get("/health", (req, res) => res.json({ ok: true }));
+/*
+Root route (useful to confirm API is running)
+*/
+app.get("/", (req, res) => {
+  res.json({ message: "Taxi Billing API Running 🚕" });
+});
 
-// Static uploads
+/*
+Health check (used by Railway sometimes)
+*/
+app.get("/health", (req, res) => {
+  res.json({ ok: true });
+});
+
+/*
+Static uploads
+*/
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
-// Public
+/*
+Public routes
+*/
 app.use("/auth", authRouter);
 
-// Portal (public, no auth): same handlers as protected routes
+/*
+Portal routes (public)
+*/
 app.use("/portal/company", companyRouter);
 app.use("/portal/customers", customersRouter);
 app.use("/portal/vehicles", vehiclesRouter);
 app.use("/portal/drivers", driversRouter);
 app.use("/portal/invoices", invoicesRouter);
 
-// Protected
+/*
+Protected routes
+*/
 app.use(requireAuth);
+
 app.use("/company", companyRouter);
 app.use("/customers", customersRouter);
 app.use("/vehicles", vehiclesRouter);
@@ -43,15 +77,22 @@ app.use("/invoices", invoicesRouter);
 app.use("/dashboard", dashboardRouter);
 app.use("/reports", reportsRouter);
 
-// Error handler (including multer)
+/*
+Error handler
+*/
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error(err);
-  return res.status(500).json({ message: err?.message || "Server error" });
+  res.status(500).json({
+    message: err?.message || "Server error",
+  });
 });
 
-const port = Number(process.env.PORT || 4000);
-app.listen(port, () => {
-  console.log(`API running on http://localhost:${port}`);
-});
+/*
+Railway dynamic port
+*/
+const PORT = process.env.PORT || 4000;
 
+app.listen(PORT, () => {
+  console.log(`API running on port ${PORT}`);
+});
