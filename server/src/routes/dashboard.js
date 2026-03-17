@@ -28,67 +28,58 @@ dashboardRouter.get("/", async (req, res) => {
   try {
     const now = new Date();
     const year = now.getUTCFullYear();
-    const month = now.getUTCMonth() + 1;
+    const month = now.getUTCMonth();
 
-    const { from, to } = monthRangeUTC(year, month);
+    const yearStart = new Date(Date.UTC(year, 0, 1));
+    const yearEnd = new Date(Date.UTC(year + 1, 0, 1));
 
-    const [
-      totalCustomers,
-      totalVehicles,
-      tripsThisMonth,
-      revenueAgg,
-      pendingAgg,
-      monthlyInvoices
-    ] = await Promise.all([
+    const [totalCustomers, totalVehicles, invoices] = await Promise.all([
       prisma.customer.count(),
       prisma.vehicle.count(),
-
-      prisma.invoice.count({
-        where: { journeyDate: { gte: from, lt: to } }
-      }),
-
-      prisma.invoice.aggregate({
-        where: { journeyDate: { gte: from, lt: to } },
-        _sum: { amount: true }
-      }),
-
-      prisma.invoice.aggregate({
-        where: {
-          paymentStatus: { in: ["PARTIAL", "PENDING"] }
-        },
-        _sum: { balanceAmount: true }
-      }),
-
       prisma.invoice.findMany({
         where: {
           journeyDate: {
-            gte: new Date(Date.UTC(year, 0, 1)),
-            lt: new Date(Date.UTC(year + 1, 0, 1))
+            gte: yearStart,
+            lt: yearEnd
           }
         },
         select: {
           journeyDate: true,
-          amount: true
+          amount: true,
+          balanceAmount: true
         }
       })
     ]);
 
-    /*
-    Build monthly charts
-    */
     const revenueByMonth = Array(12).fill(0);
     const tripsByMonth = Array(12).fill(0);
 
-    for (const inv of monthlyInvoices) {
+    let revenueThisMonth = 0;
+    let tripsThisMonth = 0;
+    let pendingPayments = 0;
+
+    for (const inv of invoices) {
       const m = inv.journeyDate.getUTCMonth();
-      revenueByMonth[m] += Number(inv.amount || 0);
+
+      const amount = Number(inv.amount || 0);
+      const balance = Number(inv.balanceAmount || 0);
+      const received = amount - balance;
+
+      revenueByMonth[m] += received;
       tripsByMonth[m] += 1;
+
+      if (m === month) {
+        revenueThisMonth += received;
+        tripsThisMonth += 1;
+      }
+
+      pendingPayments += balance;
     }
 
     return res.json({
       cards: {
-        totalRevenueThisMonth: Number(revenueAgg._sum.amount || 0),
-        totalPendingPayments: Number(pendingAgg._sum.balanceAmount || 0),
+        totalRevenueThisMonth: revenueThisMonth,
+        totalPendingPayments: pendingPayments,
         totalTripsThisMonth: tripsThisMonth,
         totalCustomers,
         totalVehicles
@@ -99,6 +90,7 @@ dashboardRouter.get("/", async (req, res) => {
         tripsByMonth
       }
     });
+
   } catch (error) {
     console.error("Dashboard error:", error);
     return res.status(500).json({
@@ -141,10 +133,19 @@ dashboardRouter.get("/daily", async (req, res) => {
       targetDate.day
     );
 
-    const agg = await prisma.invoice.aggregate({
+    const invoices = await prisma.invoice.findMany({
       where: { journeyDate: { gte: from, lt: to } },
-      _sum: { amount: true }
+      select: {
+        amount: true,
+        balanceAmount: true
+      }
     });
+
+    let received = 0;
+
+    for (const inv of invoices) {
+      received += Number(inv.amount || 0) - Number(inv.balanceAmount || 0);
+    }
 
     const isoDate = `${String(targetDate.year).padStart(4, "0")}-${String(
       targetDate.month
@@ -152,8 +153,9 @@ dashboardRouter.get("/daily", async (req, res) => {
 
     return res.json({
       date: isoDate,
-      totalRevenueForDate: Number(agg._sum.amount || 0)
+      totalRevenueForDate: received
     });
+
   } catch (error) {
     console.error("Daily dashboard error:", error);
     return res.status(500).json({
