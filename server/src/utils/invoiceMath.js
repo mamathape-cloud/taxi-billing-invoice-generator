@@ -15,9 +15,9 @@ export function diffDaysInclusive(fromDate, toDate) {
 export function computeTotals({ openingKm, closingKm, amount, amountReceived }) {
   const totalKm = Number(closingKm) - Number(openingKm);
   const balanceAmount = Number(amount) - Number(amountReceived || 0);
-  let paymentStatus = PaymentStatus.PARTIAL;
-  if (balanceAmount === 0) paymentStatus = PaymentStatus.FULL;
-  else if (Number(amountReceived || 0) === 0) paymentStatus = PaymentStatus.PENDING;
+  let paymentStatus = "PARTIAL";
+  if (balanceAmount === 0) paymentStatus = "FULL";
+  else if (Number(amountReceived || 0) === 0) paymentStatus = "PENDING";
 
   return { totalKm, balanceAmount, paymentStatus };
 }
