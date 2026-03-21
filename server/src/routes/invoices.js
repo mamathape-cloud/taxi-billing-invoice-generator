@@ -61,24 +61,29 @@ invoicesRouter.post(
   body("vehicleId").isInt().toInt(),
   body("driverId").isInt().toInt(),
   body("journeyDate").isISO8601(),
-  body("tripFrom").trim().notEmpty().withMessage("From Trip cannot be empty"),
-  body("tripTo").trim().notEmpty().withMessage("To Trip cannot be empty"),
+  body("description").trim().notEmpty().withMessage("Description cannot be empty"),
+  body("tripFrom").optional({ nullable: true }).isString(),
+  body("tripTo").optional({ nullable: true }).isString(),
   body("fromDate").isISO8601(),
   body("toDate").isISO8601(),
   body("pickupTime").optional({ nullable: true }).isString(),
   body("closingTime").optional({ nullable: true }).isString(),
-  body("openingKm").isInt({ min: 0 }).toInt(),
-  body("closingKm").isInt({ min: 0 }).toInt(),
+  body("openingKm").optional({ nullable: true }).isInt({ min: 0 }).toInt(),
+  body("closingKm").optional({ nullable: true }).isInt({ min: 0 }).toInt(),
   body("tollCharges").optional({ nullable: true }).isNumeric(),
   body("parkingCharges").optional({ nullable: true }).isNumeric(),
   body("amount").isNumeric(),
   body("amountReceived").optional({ nullable: true }).isNumeric(),
   async (req, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ message: errors.array()[0].msg, errors: errors.array() });
+    }
 
-    const openingKm = Number(req.body.openingKm);
-    const closingKm = Number(req.body.closingKm);
+    const openingKm =
+      req.body.openingKm !== undefined && req.body.openingKm !== null ? Number(req.body.openingKm) : 0;
+    const closingKm =
+      req.body.closingKm !== undefined && req.body.closingKm !== null ? Number(req.body.closingKm) : 0;
     if (closingKm < openingKm) {
       return res.status(400).json({ message: "Closing KM cannot be less than Opening KM." });
     }
@@ -105,6 +110,14 @@ invoicesRouter.post(
       amount,
       amountReceived
     });
+
+    const description = String(req.body.description || "").trim();
+    const tripFrom =
+      req.body.tripFrom != null && String(req.body.tripFrom).trim() ? String(req.body.tripFrom).trim() : "-";
+    const tripTo =
+      req.body.tripTo != null && String(req.body.tripTo).trim() ? String(req.body.tripTo).trim() : "-";
+    const tollCharges = parseMoney(req.body.tollCharges, 0);
+    const parkingCharges = parseMoney(req.body.parkingCharges, 0);
 
     const customer = await prisma.customer.findUnique({ where: { id: req.body.customerId } });
     if (!customer) {
@@ -128,8 +141,9 @@ invoicesRouter.post(
         vehicleId: req.body.vehicleId,
         driverId: req.body.driverId,
         journeyDate: new Date(req.body.journeyDate),
-        tripFrom: req.body.tripFrom,
-        tripTo: req.body.tripTo,
+        description,
+        tripFrom,
+        tripTo,
         fromDate,
         toDate,
         numberOfDays,
@@ -138,8 +152,8 @@ invoicesRouter.post(
         openingKm,
         closingKm,
         totalKm,
-        tollCharges: parseMoney(req.body.tollCharges, 0),
-        parkingCharges: parseMoney(req.body.parkingCharges, 0),
+        tollCharges,
+        parkingCharges,
         amount,
         amountReceived,
         balanceAmount,
@@ -159,24 +173,29 @@ invoicesRouter.put(
   body("vehicleId").isInt().toInt(),
   body("driverId").isInt().toInt(),
   body("journeyDate").isISO8601(),
-  body("tripFrom").trim().notEmpty().withMessage("From Trip cannot be empty"),
-  body("tripTo").trim().notEmpty().withMessage("To Trip cannot be empty"),
+  body("description").trim().notEmpty().withMessage("Description cannot be empty"),
+  body("tripFrom").optional({ nullable: true }).isString(),
+  body("tripTo").optional({ nullable: true }).isString(),
   body("fromDate").isISO8601(),
   body("toDate").isISO8601(),
   body("pickupTime").optional({ nullable: true }).isString(),
   body("closingTime").optional({ nullable: true }).isString(),
-  body("openingKm").isInt({ min: 0 }).toInt(),
-  body("closingKm").isInt({ min: 0 }).toInt(),
+  body("openingKm").optional({ nullable: true }).isInt({ min: 0 }).toInt(),
+  body("closingKm").optional({ nullable: true }).isInt({ min: 0 }).toInt(),
   body("tollCharges").optional({ nullable: true }).isNumeric(),
   body("parkingCharges").optional({ nullable: true }).isNumeric(),
   body("amount").isNumeric(),
   body("amountReceived").optional({ nullable: true }).isNumeric(),
   async (req, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ message: errors.array()[0].msg, errors: errors.array() });
+    }
 
-    const openingKm = Number(req.body.openingKm);
-    const closingKm = Number(req.body.closingKm);
+    const openingKm =
+      req.body.openingKm !== undefined && req.body.openingKm !== null ? Number(req.body.openingKm) : 0;
+    const closingKm =
+      req.body.closingKm !== undefined && req.body.closingKm !== null ? Number(req.body.closingKm) : 0;
     if (closingKm < openingKm) {
       return res.status(400).json({ message: "Closing KM cannot be less than Opening KM." });
     }
@@ -203,6 +222,14 @@ invoicesRouter.put(
       amount,
       amountReceived
     });
+    const description = String(req.body.description || "").trim();
+    const tripFrom =
+      req.body.tripFrom != null && String(req.body.tripFrom).trim() ? String(req.body.tripFrom).trim() : "-";
+    const tripTo =
+      req.body.tripTo != null && String(req.body.tripTo).trim() ? String(req.body.tripTo).trim() : "-";
+    const tollCharges = parseMoney(req.body.tollCharges, 0);
+    const parkingCharges = parseMoney(req.body.parkingCharges, 0);
+
     const customer = await prisma.customer.findUnique({ where: { id: req.body.customerId } });
     if (!customer) {
       return res.status(400).json({ message: "Customer not found. Please add customer first." });
@@ -223,8 +250,9 @@ invoicesRouter.put(
         vehicleId: req.body.vehicleId,
         driverId: req.body.driverId,
         journeyDate: new Date(req.body.journeyDate),
-        tripFrom: req.body.tripFrom,
-        tripTo: req.body.tripTo,
+        description,
+        tripFrom,
+        tripTo,
         fromDate,
         toDate,
         numberOfDays,
@@ -233,8 +261,8 @@ invoicesRouter.put(
         openingKm,
         closingKm,
         totalKm,
-        tollCharges: parseMoney(req.body.tollCharges, 0),
-        parkingCharges: parseMoney(req.body.parkingCharges, 0),
+        tollCharges,
+        parkingCharges,
         amount,
         amountReceived,
         balanceAmount,

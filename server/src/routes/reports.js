@@ -5,6 +5,23 @@ import PDFDocument from "pdfkit";
 
 export const reportsRouter = express.Router();
 
+/** Full text for CSV; description or legacy trip route */
+function invoiceDescriptionExport(inv) {
+  const d = inv.description && String(inv.description).trim();
+  if (d) return d;
+  const tf = inv.tripFrom;
+  const tt = inv.tripTo;
+  if (tf && tt && tf !== "-") return `${tf} → ${tt}`;
+  return "";
+}
+
+/** Single-line for PDF table cells */
+function invoiceDescriptionPdfCell(inv) {
+  const full = invoiceDescriptionExport(inv);
+  if (!full) return "";
+  return full.length > 42 ? `${full.slice(0, 39)}...` : full;
+}
+
 function monthRangeUTC(year, month1to12) {
   const from = new Date(Date.UTC(year, month1to12 - 1, 1));
   const to = new Date(Date.UTC(year, month1to12, 1));
@@ -116,6 +133,7 @@ reportsRouter.get(
       "Customer",
       "Vehicle",
       "Driver",
+      "Description",
       "TotalAmount",
       "Received",
       "Balance",
@@ -139,6 +157,7 @@ reportsRouter.get(
         i.customer?.name || "",
         i.vehicle?.vehicleNumber || "",
         i.driver?.name || "",
+        invoiceDescriptionExport(i),
         amt.toFixed(2),
         rec.toFixed(2),
         bal.toFixed(2),
@@ -148,6 +167,7 @@ reportsRouter.get(
 
     const totalRow = [
       "TOTAL",
+      "",
       "",
       "",
       "",
@@ -228,15 +248,16 @@ reportsRouter.get(
     const xStart = 40;
 
     const columns = [
-      { key: "invoice", label: "Invoice", width: 55 },
-      { key: "date", label: "Date", width: 50 },
-      { key: "customer", label: "Customer", width: 85 },
-      { key: "vehicle", label: "Vehicle", width: 55 },
-      { key: "driver", label: "Driver", width: 75 },
-      { key: "total", label: "Total", width: 45 },
-      { key: "received", label: "Received", width: 45 },
-      { key: "balance", label: "Balance", width: 45 },
-      { key: "status", label: "Status", width: 50 }
+      { key: "invoice", label: "Invoice", width: 42 },
+      { key: "date", label: "Date", width: 40 },
+      { key: "customer", label: "Customer", width: 58 },
+      { key: "vehicle", label: "Vehicle", width: 42 },
+      { key: "driver", label: "Driver", width: 50 },
+      { key: "description", label: "Description", width: 66 },
+      { key: "total", label: "Total", width: 36 },
+      { key: "received", label: "Received", width: 36 },
+      { key: "balance", label: "Balance", width: 36 },
+      { key: "status", label: "Status", width: 44 }
     ];
 
     function drawTableHeader(y) {
@@ -279,6 +300,7 @@ reportsRouter.get(
         customer: inv.customer?.name || "",
         vehicle: inv.vehicle?.vehicleNumber || "",
         driver: inv.driver?.name || "",
+        description: invoiceDescriptionPdfCell(inv),
         total: Number(inv.amount || 0).toFixed(2),
         received: Number(inv.amountReceived || 0).toFixed(2),
         balance: Number(inv.balanceAmount || 0).toFixed(2),
@@ -299,7 +321,9 @@ reportsRouter.get(
 
     doc.font("Helvetica-Bold").fontSize(8);
     let x = xStart;
-    doc.text("TOTALS", x, y, { width: columns[0].width + columns[1].width + columns[2].width + columns[3].width + columns[4].width + 16, align: "right" });
+    const totalsLabelWidth =
+      columns.slice(0, 6).reduce((acc, col) => acc + col.width + 4, 0) - 4;
+    doc.text("TOTALS", x, y, { width: totalsLabelWidth, align: "right" });
     x = xStart;
     for (const col of columns) {
       if (col.key === "total") {

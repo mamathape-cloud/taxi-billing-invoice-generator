@@ -89,6 +89,8 @@ model Invoice {
 
   journeyDate DateTime
 
+  description String? @db.Text
+
   tripFrom String
   tripTo   String
 

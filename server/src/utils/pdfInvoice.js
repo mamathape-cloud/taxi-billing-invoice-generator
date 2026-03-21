@@ -85,26 +85,22 @@ function numberToWordsINR(amount) {
   return `${parts.join(" ")} Rupees Only`.replace(/\s+/g, " ").trim();
 }
 
-function drawKeyValue(doc, x, y, key, value, keyWidth = 90, lineHeight = 14) {
-  doc.font("Helvetica-Bold").fontSize(9).text(key, x, y, { width: keyWidth });
-  doc.font("Helvetica").fontSize(9).text(value ?? "-", x + keyWidth, y, { width: 200 });
-  return y + lineHeight;
+function companyPhoneLines(phone) {
+  if (!phone) return [];
+  return String(phone)
+    .split(/[,;\n]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
-function drawTableRow(doc, y, cols, widths, { header = false } = {}) {
-  doc.font(header ? "Helvetica-Bold" : "Helvetica").fontSize(9);
-  let x = 50;
-  for (let i = 0; i < cols.length; i++) {
-    doc.text(String(cols[i] ?? ""), x + 4, y + 4, { width: widths[i] - 8 });
-    x += widths[i];
-  }
-  doc.rect(50, y, widths.reduce((a, b) => a + b, 0), 22).stroke("#E5E7EB");
-  x = 50;
-  for (let i = 0; i < widths.length; i++) {
-    doc.rect(x, y, widths[i], 22).stroke("#E5E7EB");
-    x += widths[i];
-  }
-  return y + 22;
+/** Narrative for PDF: new description field or legacy trip route */
+function invoiceDescriptionText(inv) {
+  const d = inv.description && String(inv.description).trim();
+  if (d) return d;
+  const from = inv.tripFrom;
+  const to = inv.tripTo;
+  if (from && to && from !== "-" && to !== "-") return `${from} → ${to}`;
+  return "-";
 }
 
 export async function generateInvoicePdfBuffer({ invoice, company }) {
@@ -118,218 +114,167 @@ export async function generateInvoicePdfBuffer({ invoice, company }) {
   });
 
   const pageWidth = doc.page.width;
-  const left = 50;
-  const right = pageWidth - 50;
-  const BOX_HEIGHT = 120;
-  const CHARGES_BOX_HEIGHT = 130;
+  const left = 40;
+  const right = pageWidth - 40;
+  const contentW = right - left;
 
-  // Header background
-  doc.rect(40, 40, pageWidth - 80, 90).fill("#FFFFFF").stroke("#E5E7EB");
+  let y = 45;
 
-  // Logo
+  // Top row: logo left, phone(s) right
   const logoPath = localPathFromUploadsUrl(company?.logoUrl);
+  const logoTop = y;
   if (logoPath && fs.existsSync(logoPath)) {
     try {
-      doc.image(logoPath, left, 50, { fit: [120, 80] });
+      doc.image(logoPath, left, y, { fit: [72, 72] });
     } catch {
-      // ignore image errors
+      doc.font("Helvetica-Bold").fontSize(10).fillColor("#111827").text("LOGO", left, y + 28);
     }
   } else {
-    doc.font("Helvetica-Bold").fontSize(12).fillColor("#111827").text("TAXI INVOICE", left, 70);
+    doc.font("Helvetica-Bold").fontSize(10).fillColor("#111827").text("LOGO", left, y + 28);
   }
 
-  // Company details
   doc.fillColor("#111827");
-  doc.font("Helvetica-Bold").fontSize(14).text(company?.companyName || "Company Name", 160, 55, {
-    width: right - 160,
-    align: "right"
-  });
+  const phones = companyPhoneLines(company?.phone);
+  let phoneY = y;
+  doc.font("Helvetica-Bold").fontSize(9).text("Phone:", right - 140, phoneY, { width: 140, align: "right" });
+  phoneY += 12;
   doc.font("Helvetica").fontSize(9);
-  const infoLines = [
-    company?.address,
-    company?.phone ? `Phone: ${company.phone}` : null,
-    company?.email ? `Email: ${company.email}` : null,
-    company?.gstNumber ? `GST: ${company.gstNumber}` : null
-  ].filter(Boolean);
-  doc.text(infoLines.join("\n"), 160, 78, { width: right - 160, align: "right" });
+  if (phones.length) {
+    for (const p of phones.slice(0, 4)) {
+      doc.text(p, right - 140, phoneY, { width: 140, align: "right" });
+      phoneY += 11;
+    }
+  } else {
+    doc.text("-", right - 140, phoneY, { width: 140, align: "right" });
+    phoneY += 11;
+  }
 
-  doc.moveDown(6);
+  y = Math.max(y + 78, phoneY + 8);
+
+  // Company name + address (centered, like sample)
   doc.fillColor("#111827");
-
-  // Invoice Info
-  let y = 150;
-  doc.font("Helvetica-Bold").fontSize(11).text("Invoice Information", left, y);
-  y += 14;
-  doc.rect(40, y, pageWidth - 80, 70).stroke("#E5E7EB");
-  let yLeft = y + 10;
-  yLeft = drawKeyValue(doc, left, yLeft, "Invoice No:", invoice.invoiceNumber);
-  yLeft = drawKeyValue(doc, left, yLeft, "Invoice Date:", formatDate(invoice.createdAt));
-  yLeft = drawKeyValue(doc, left, yLeft, "Journey Date:", formatDate(invoice.journeyDate));
-
-  // Customer / Vehicle / Driver + Trip summary blocks
-  y += 90;
-  doc.font("Helvetica-Bold").fontSize(11).text("Customer / Vehicle / Driver", left, y);
-  doc.font("Helvetica-Bold").fontSize(11).text("Trip Details", pageWidth / 2 + 10, y);
-  y += 14;
-
-  const blockWidth = (pageWidth - 90) / 2;
-  doc.rect(40, y, blockWidth, BOX_HEIGHT).stroke("#E5E7EB");
-  doc.rect(50 + blockWidth, y, blockWidth, BOX_HEIGHT).stroke("#E5E7EB");
-
-  const boxContentTop = y + 12;
-  const boxContentBottom = y + BOX_HEIGHT - 12;
-
-  // Left: customer / vehicle / driver
-  let yC = boxContentTop;
-  const driverName = invoice.driver?.name || "";
-  const driverPhone = invoice.driver?.phone || "";
-
-  function leftRow(label, value) {
-    if (yC > boxContentBottom) return;
-    yC = drawKeyValue(doc, left, yC, label, value);
-  }
-
-  leftRow("Name:", invoice.customer?.name);
-  leftRow("Phone:", invoice.customer?.phone);
-  leftRow("Vehicle:", invoice.vehicle?.vehicleNumber);
-  leftRow("Driver:", driverName);
-  leftRow("Driver Ph:", driverPhone);
-
-  // Right: trip summary with right-aligned values
-  let yT = boxContentTop;
-  const rightBlockX = 50 + blockWidth;
-  const tripKeyWidth = 105;
-  const tripValWidth = blockWidth - tripKeyWidth - 24;
-  const tripLineHeight = 14;
-
-  function tripRow(label, value) {
-    if (yT > boxContentBottom) return;
-    doc.font("Helvetica-Bold").fontSize(9).text(label, rightBlockX, yT, { width: tripKeyWidth });
-    doc
-      .font("Helvetica")
-      .fontSize(9)
-      .text(value ?? "-", rightBlockX + tripKeyWidth, yT, {
-        width: tripValWidth,
-        align: "right"
-      });
-    yT += tripLineHeight;
-  }
-
-  tripRow("From:", invoice.tripFrom);
-  tripRow("To:", invoice.tripTo);
-  tripRow("From Date & Time:", `${formatDate(invoice.fromDate)} ${invoice.pickupTime || "-"}`);
-  tripRow("To Date & Time:", `${formatDate(invoice.toDate)} ${invoice.closingTime || "-"}`);
-  tripRow("Days:", String(invoice.numberOfDays));
-  tripRow("Opening KM:", String(invoice.openingKm));
-  tripRow("Closing KM:", String(invoice.closingKm));
-  tripRow("Total KM:", String(invoice.totalKm));
-
-  // Move below both boxes
-  y += BOX_HEIGHT + 20;
-
-  // Charges
-  y += 18;
-  doc.font("Helvetica-Bold").fontSize(11).text("Charges", left, y);
-  y += 14;
-
-  const chargesX = left;
-  const descW = 300;
-  const amtW = 180;
-  // Fixed-height Charges box
-  doc.rect(40, y, descW + amtW + 40, CHARGES_BOX_HEIGHT).stroke("#E5E7EB");
-
-  doc.font("Helvetica-Bold").fontSize(9).text("Description", chargesX + 4, y + 6, { width: descW });
-  doc.font("Helvetica-Bold").fontSize(9).text("Amount", chargesX + descW + 30, y + 6, {
-    width: amtW,
-    align: "right"
+  doc.font("Helvetica-Bold").fontSize(15).text(company?.companyName || "Company Name", left, y, {
+    width: contentW,
+    align: "center"
   });
+  y += 20;
+  doc.font("Helvetica").fontSize(9).text(company?.address || "-", left, y, { width: contentW, align: "center" });
+  y += doc.heightOfString(company?.address || "-", { width: contentW }) + 6;
+
+  if (company?.email) {
+    doc.font("Helvetica").fontSize(8).text(`Email: ${company.email}`, left, y, { width: contentW, align: "center" });
+    y += 12;
+  }
+  if (company?.gstNumber) {
+    doc.font("Helvetica").fontSize(8).text(`GST: ${company.gstNumber}`, left, y, { width: contentW, align: "center" });
+    y += 12;
+  }
+
+  y += 8;
+  doc.font("Helvetica-Bold").fontSize(12).text("Tax Invoice", left, y, { width: contentW, align: "center" });
+  y += 22;
+
+  // Bill To | Invoice details
+  const colW = contentW / 2 - 6;
+  const boxH = 72;
+  doc.rect(left, y, colW, boxH).stroke("#E5E7EB");
+  doc.rect(left + colW + 12, y, colW, boxH).stroke("#E5E7EB");
+
+  let yb = y + 8;
+  doc.font("Helvetica-Bold").fontSize(10).text("Bill To:", left + 8, yb);
+  yb += 14;
+  doc.font("Helvetica").fontSize(9).text(invoice.customer?.name || "-", left + 8, yb, { width: colW - 16 });
+  yb += 12;
   doc
-    .moveTo(chargesX, y + 24)
-    .lineTo(chargesX + descW + amtW + 40, y + 24)
-    .stroke("#E5E7EB");
+    .font("Helvetica")
+    .fontSize(9)
+    .text(`Contact No: ${invoice.customer?.phone || "-"}`, left + 8, yb, { width: colW - 16 });
 
-  const rows = [
-    ["Trip Fare", money(Number(invoice.amount) - Number(invoice.tollCharges) - Number(invoice.parkingCharges))],
-    ["Toll Charges", money(invoice.tollCharges)],
-    ["Parking Charges", money(invoice.parkingCharges)]
-  ];
-  let ry = y + 30; // first row baseline
-  const rowStep = 18;
+  let yi = y + 8;
+  doc.font("Helvetica-Bold").fontSize(10).text("Invoice Details:", left + colW + 20, yi);
+  yi += 14;
+  doc.font("Helvetica").fontSize(9).text(`No: ${invoice.invoiceNumber}`, left + colW + 20, yi, { width: colW - 16 });
+  yi += 12;
+  doc
+    .font("Helvetica")
+    .fontSize(9)
+    .text(`Date: ${formatDate(invoice.journeyDate)}`, left + colW + 20, yi, { width: colW - 16 });
+
+  y += boxH + 14;
+
+  // Financial summary (right block style from sample)
+  const finW = 220;
+  const finX = right - finW;
+  const finH = 88;
+  doc.rect(finX, y, finW, finH).stroke("#E5E7EB");
+  let fy = y + 10;
+  doc.font("Helvetica-Bold").fontSize(9).text("Total:", finX + 8, fy, { width: 80 });
+  doc.font("Helvetica").fontSize(9).text(`₹ ${money(invoice.amount)}`, finX + 88, fy, { width: finW - 96, align: "right" });
+  fy += 14;
+  doc.font("Helvetica-Bold").fontSize(8).text("Invoice Amount In Words:", finX + 8, fy, { width: finW - 16 });
+  fy += 11;
+  doc.font("Helvetica").fontSize(8).text(numberToWordsINR(invoice.amount), finX + 8, fy, { width: finW - 16 });
+  fy += 22;
+  doc.font("Helvetica-Bold").fontSize(9).text("Received:", finX + 8, fy, { width: 80 });
+  doc.font("Helvetica").fontSize(9).text(`₹ ${money(invoice.amountReceived)}`, finX + 88, fy, {
+    width: finW - 96,
+    align: "right"
+  });
+  fy += 14;
+  doc.font("Helvetica-Bold").fontSize(9).text("Balance:", finX + 8, fy, { width: 80 });
+  doc.font("Helvetica").fontSize(9).text(`₹ ${money(invoice.balanceAmount)}`, finX + 88, fy, {
+    width: finW - 96,
+    align: "right"
+  });
+
+  y += finH + 14;
+
+  // Description (left) + Terms (right)
+  const descColW = contentW / 2 - 6;
+  const descText = invoiceDescriptionText(invoice);
   doc.font("Helvetica").fontSize(9);
-  for (const [d, a] of rows) {
-    doc.text(d, chargesX + 4, ry, { width: descW });
-    doc.text(a, chargesX + descW + 30, ry, { width: amtW, align: "right" });
-    ry += rowStep;
-  }
+  const descTextH = doc.heightOfString(descText, { width: descColW - 16 });
+  const termsH = doc.heightOfString("Thank you for doing business with us.", { width: descColW - 16 });
+  const bottomBoxH = Math.max(100, descTextH + 36, termsH + 36);
 
-  const totalY = y + CHARGES_BOX_HEIGHT - 24;
-  doc.font("Helvetica-Bold").text("Total Amount", chargesX + 4, totalY, { width: descW });
-  doc.font("Helvetica-Bold").text(money(invoice.amount), chargesX + descW + 30, totalY, {
-    width: amtW,
-    align: "right"
-  });
+  doc.rect(left, y, descColW, bottomBoxH).stroke("#E5E7EB");
+  doc.rect(left + descColW + 12, y, descColW, bottomBoxH).stroke("#E5E7EB");
 
-  // Amount in words and payment summary
-  y += 130;
-  doc.font("Helvetica-Bold").fontSize(10).fillColor("#111827").text("Amount in Words:", left, y);
-  doc.font("Helvetica").fontSize(10).text(numberToWordsINR(invoice.amount), left + 120, y, {
-    width: pageWidth - 260
-  });
+  doc.font("Helvetica-Bold").fontSize(10).text("Description:", left + 8, y + 8);
+  doc.font("Helvetica").fontSize(9).text(descText, left + 8, y + 24, { width: descColW - 16 });
 
-  const payX = pageWidth - 220;
-  let py = y;
-  // Received
-  doc.font("Helvetica-Bold").fontSize(9).text("Received:", payX, py, { width: 80 });
-  doc.font("Helvetica").fontSize(9).text(money(invoice.amountReceived), payX + 80, py, {
-    width: 80,
-    align: "right"
-  });
-  py += 14;
-  // Balance
-  doc.font("Helvetica-Bold").fontSize(9).text("Balance:", payX, py, { width: 80 });
-  doc.font("Helvetica").fontSize(9).text(money(invoice.balanceAmount), payX + 80, py, {
-    width: 80,
-    align: "right"
-  });
-  py += 14;
-  // Status
-  doc.font("Helvetica-Bold").fontSize(9).text("Status:", payX, py, { width: 80 });
-  doc.font("Helvetica").fontSize(9).text(String(invoice.paymentStatus || ""), payX + 80, py, {
-    width: 80,
-    align: "right"
-  });
+  doc.font("Helvetica-Bold").fontSize(10).text("Terms And Conditions:", left + descColW + 20, y + 8);
+  doc
+    .font("Helvetica")
+    .fontSize(9)
+    .text("Thank you for doing business with us.", left + descColW + 20, y + 24, { width: descColW - 16 });
 
-  // Footer
-  const footerY = doc.page.height - 120;
-  doc.moveTo(40, footerY - 10).lineTo(pageWidth - 40, footerY - 10).stroke("#E5E7EB");
-  doc.font("Helvetica").fontSize(9).fillColor("#374151");
-  doc.text(
-    "Thank you for choosing our service.\nWe hope you had a comfortable journey and look forward to serving you again.",
-    left,
-    footerY + 8,
-    { width: pageWidth - 260 }
-  );
+  y += bottomBoxH + 20;
 
+  // Signature block bottom right
   const sigPath = localPathFromUploadsUrl(company?.signatureUrl);
-  const sigX = pageWidth - 200;
-  const sigY = footerY;
+  const sigW = 160;
+  const sigX = right - sigW;
+  const companyShort = company?.companyName || "Company";
+  doc.font("Helvetica").fontSize(9).text(`For ${companyShort}:`, sigX, y, { width: sigW, align: "center" });
+  y += 14;
   if (sigPath && fs.existsSync(sigPath)) {
     try {
-      doc.image(sigPath, sigX, sigY, { fit: [140, 60] });
+      doc.image(sigPath, sigX + 10, y, { fit: [sigW - 20, 50] });
     } catch {
-      // ignore
+      doc.font("Helvetica").fontSize(8).fillColor("#9CA3AF").text("(Signature)", sigX, y + 16, {
+        width: sigW,
+        align: "center"
+      });
     }
   } else {
-    doc.font("Helvetica").fontSize(9).fillColor("#9CA3AF").text("(Signature)", sigX, sigY + 20, {
-      width: 140,
+    doc.font("Helvetica").fontSize(8).fillColor("#9CA3AF").text("(Signature)", sigX, y + 16, {
+      width: sigW,
       align: "center"
     });
   }
   doc.fillColor("#111827");
-  doc.font("Helvetica-Bold").fontSize(9).text("Authorized Signatory", sigX, sigY + 66, {
-    width: 140,
-    align: "center"
-  });
+  doc.font("Helvetica-Bold").fontSize(9).text("Authorized Signatory", sigX, y + 56, { width: sigW, align: "center" });
 
   doc.end();
   return await done;

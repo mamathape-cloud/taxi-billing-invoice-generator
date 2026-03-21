@@ -128,6 +128,7 @@ async function main() {
         vehicleId: veh1.id,
         driverId: driver1.id,
         journeyDate: new Date(),
+        description: "Hyderabad to Airport • TS09AB1234 • Toll 100, Parking 50",
         tripFrom: "Hyderabad",
         tripTo: "Airport",
         fromDate,
