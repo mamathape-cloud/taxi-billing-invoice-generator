@@ -28,6 +28,64 @@ function monthRangeUTC(year, month1to12) {
   return { from, to };
 }
 
+function dayRangeUTC(year, month1to12, day1to31) {
+  const from = new Date(Date.UTC(year, month1to12 - 1, day1to31));
+  const to = new Date(Date.UTC(year, month1to12 - 1, day1to31 + 1));
+  return { from, to };
+}
+
+reportsRouter.get(
+  "/daily",
+  query("date").matches(/^\d{4}-\d{2}-\d{2}$/),
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const [y, m, d] = String(req.query.date)
+      .split("-")
+      .map((v) => Number(v));
+    if (!y || !m || m < 1 || m > 12 || !d || d < 1 || d > 31) {
+      return res.status(400).json({ message: "Invalid date." });
+    }
+
+    const { from, to } = dayRangeUTC(y, m, d);
+
+    const invoices = await prisma.invoice.findMany({
+      where: { journeyDate: { gte: from, lt: to } },
+      include: { customer: true },
+      orderBy: { createdAt: "asc" }
+    });
+
+    let totalRevenue = 0;
+    let totalCollected = 0;
+    let totalPending = 0;
+    for (const inv of invoices) {
+      totalRevenue += Number(inv.amount || 0);
+      totalCollected += Number(inv.amountReceived || 0);
+      totalPending += Number(inv.balanceAmount || 0);
+    }
+
+    return res.json({
+      date: req.query.date,
+      totals: {
+        totalRevenue,
+        totalCollected,
+        totalPending,
+        totalTrips: invoices.length
+      },
+      invoices: invoices.map((i) => ({
+        id: i.id,
+        invoiceNumber: i.invoiceNumber,
+        customerName: i.customer?.name || "",
+        amount: Number(i.amount || 0),
+        amountReceived: Number(i.amountReceived || 0),
+        balanceAmount: Number(i.balanceAmount || 0),
+        paymentStatus: i.paymentStatus
+      }))
+    });
+  }
+);
+
 async function buildYearlyAggregates(year) {
   const months = await Promise.all(
     Array.from({ length: 12 }, (_, idx) => idx + 1).map(async (m) => {
