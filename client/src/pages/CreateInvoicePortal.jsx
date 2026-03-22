@@ -5,6 +5,15 @@ import { Button, Input, TextArea } from "../components/ui.jsx";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
 
+function toISODate(d) {
+  if (!d) return "";
+  const dt = new Date(d);
+  const yyyy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function formatPhoneForWhatsApp(phone) {
   const digits = String(phone || "").replace(/\D/g, "");
   if (digits.length === 10) return "91" + digits;
@@ -28,14 +37,10 @@ export default function CreateInvoicePortal() {
     customerId: "",
     vehicleId: "",
     driverId: "",
-    tripFrom: "",
-    tripTo: "",
-    pickupDateTime: "",
-    dropDateTime: "",
-    openingKm: "",
-    closingKm: "",
-    parkingCharges: 0,
-    tollCharges: 0,
+    description: "",
+    journeyDate: toISODate(new Date()),
+    fromDate: toISODate(new Date()),
+    toDate: toISODate(new Date()),
     amount: "",
     amountReceived: 0
   });
@@ -104,7 +109,6 @@ export default function CreateInvoicePortal() {
       .finally(() => setLoading(false));
   }, [showForm]);
 
-  const totalKm = form.openingKm !== "" && form.closingKm !== "" ? Number(form.closingKm) - Number(form.openingKm) : null;
   const balanceAmount = form.amount !== "" && Number.isFinite(Number(form.amount))
     ? Number(form.amount) - Number(form.amountReceived || 0)
     : null;
@@ -154,48 +158,38 @@ export default function CreateInvoicePortal() {
     if (!form.customerId) errs.customerId = "Please select a customer or add a new one.";
     if (!form.vehicleId) errs.vehicleId = "Please select a vehicle or add a new one.";
     if (!form.driverId) errs.driverId = "Please select a driver or add a new one.";
-    if (!form.tripFrom?.trim()) errs.tripFrom = "From Trip cannot be empty.";
-    if (!form.tripTo?.trim()) errs.tripTo = "To Trip cannot be empty.";
-    if (!form.pickupDateTime) errs.pickupDateTime = "Please enter Pickup Date and Time.";
-    if (!form.dropDateTime) errs.dropDateTime = "Please enter Drop Date and Time.";
-    const openKm = Number(form.openingKm);
-    const closeKm = Number(form.closingKm);
-    if (!Number.isFinite(openKm) || openKm < 0) errs.openingKm = "Please enter valid Opening KM.";
-    if (!Number.isFinite(closeKm) || closeKm < 0) errs.closingKm = "Please enter valid Closing KM.";
-    if (Number.isFinite(openKm) && Number.isFinite(closeKm) && closeKm < openKm) errs.closingKm = "Closing KM cannot be less than Opening KM.";
+    if (!form.description?.trim()) errs.description = "Description cannot be empty.";
+    if (!form.journeyDate) errs.journeyDate = "Please enter Journey Date.";
+    if (!form.fromDate) errs.fromDate = "Please enter From Date.";
+    if (!form.toDate) errs.toDate = "Please enter To Date.";
+    const from = new Date(form.fromDate);
+    const to = new Date(form.toDate);
+    if (form.fromDate && form.toDate && to < from) {
+      errs.toDate = "To Date cannot be earlier than From Date.";
+    }
     const amt = Number(form.amount);
     if (!Number.isFinite(amt) || amt <= 0) errs.amount = "Total Amount is required and must be greater than zero.";
     const received = Number(form.amountReceived || 0);
     if (received > amt) errs.amountReceived = "Amount Received cannot be more than Total Amount.";
-    if (form.pickupDateTime && form.dropDateTime) {
-      const fromDate = form.pickupDateTime.slice(0, 10);
-      const toDate = form.dropDateTime.slice(0, 10);
-      if (toDate < fromDate) errs.dropDateTime = "Drop date cannot be earlier than Pickup date.";
-    }
     if (Object.keys(errs).length > 0) return { ok: false, fieldErrors: errs };
     return { ok: true };
   }
 
   function buildPayload() {
-    const fromDate = form.pickupDateTime.slice(0, 10);
-    const toDate = form.dropDateTime.slice(0, 10);
-    const pickupTime = form.pickupDateTime.slice(11, 16) || null;
-    const closingTime = form.dropDateTime.slice(11, 16) || null;
     return {
       customerId: form.customerId,
       vehicleId: Number(form.vehicleId),
       driverId: Number(form.driverId),
-      journeyDate: new Date(form.pickupDateTime).toISOString(),
-      tripFrom: form.tripFrom.trim(),
-      tripTo: form.tripTo.trim(),
-      fromDate: new Date(fromDate).toISOString(),
-      toDate: new Date(toDate).toISOString(),
-      pickupTime,
-      closingTime,
-      openingKm: Number(form.openingKm),
-      closingKm: Number(form.closingKm),
-      tollCharges: Number(form.tollCharges) || 0,
-      parkingCharges: Number(form.parkingCharges) || 0,
+      journeyDate: new Date(form.journeyDate).toISOString(),
+      description: form.description.trim(),
+      fromDate: new Date(form.fromDate).toISOString(),
+      toDate: new Date(form.toDate).toISOString(),
+      pickupTime: null,
+      closingTime: null,
+      openingKm: 0,
+      closingKm: 0,
+      tollCharges: 0,
+      parkingCharges: 0,
       amount: Number(form.amount),
       amountReceived: Number(form.amountReceived) || 0
     };
@@ -310,9 +304,9 @@ export default function CreateInvoicePortal() {
       "",
       `Thank you for choosing ${companyName}.`,
       "",
-      "Trip Details",
-      `From: ${inv.tripFrom}`,
-      `To: ${inv.tripTo}`,
+      "Details",
+      (inv.description && String(inv.description).trim()) ||
+        (inv.tripFrom && inv.tripTo ? `${inv.tripFrom} → ${inv.tripTo}` : ""),
       "",
       `Total Amount: ₹${Number(inv.amount).toFixed(2)}`,
       "",
@@ -359,8 +353,15 @@ export default function CreateInvoicePortal() {
                 setCreatedInvoice(null);
                 setShowForm(false);
                 setForm({
-                  customerId: "", vehicleId: "", driverId: "", tripFrom: "", tripTo: "", pickupDateTime: "", dropDateTime: "",
-                  openingKm: "", closingKm: "", parkingCharges: 0, tollCharges: 0, amount: "", amountReceived: 0
+                  customerId: "",
+                  vehicleId: "",
+                  driverId: "",
+                  description: "",
+                  journeyDate: toISODate(new Date()),
+                  fromDate: toISODate(new Date()),
+                  toDate: toISODate(new Date()),
+                  amount: "",
+                  amountReceived: 0
                 });
                 setFieldErrors({});
                 setCustomerSearch("");
@@ -609,37 +610,57 @@ export default function CreateInvoicePortal() {
                 {/* Trip details */}
                 <div className="border-t border-gray-200 pt-4">
                   <h3 className="text-sm font-semibold text-gray-900 mb-3">Trip details</h3>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Input label="From" value={form.tripFrom} onChange={(e) => { setForm((f) => ({ ...f, tripFrom: e.target.value })); setFieldErrors((p) => ({ ...p, tripFrom: undefined })); }} placeholder="Trip from" error={fieldErrors.tripFrom} />
-                    <Input label="To" value={form.tripTo} onChange={(e) => { setForm((f) => ({ ...f, tripTo: e.target.value })); setFieldErrors((p) => ({ ...p, tripTo: undefined })); }} placeholder="Trip to" error={fieldErrors.tripTo} />
+                  <Input
+                    label="Journey Date"
+                    type="date"
+                    value={form.journeyDate}
+                    onChange={(e) => {
+                      setForm((f) => ({ ...f, journeyDate: e.target.value }));
+                      setFieldErrors((p) => ({ ...p, journeyDate: undefined }));
+                    }}
+                    error={fieldErrors.journeyDate}
+                  />
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
                     <Input
-                      label="Pickup Date & Time"
-                      type="datetime-local"
-                      value={form.pickupDateTime}
-                      onChange={(e) => { setForm((f) => ({ ...f, pickupDateTime: e.target.value })); setFieldErrors((p) => ({ ...p, pickupDateTime: undefined, dropDateTime: undefined })); }}
-                      error={fieldErrors.pickupDateTime}
+                      label="From Date"
+                      type="date"
+                      value={form.fromDate}
+                      onChange={(e) => {
+                        setForm((f) => ({ ...f, fromDate: e.target.value }));
+                        setFieldErrors((p) => ({ ...p, fromDate: undefined, toDate: undefined }));
+                      }}
+                      error={fieldErrors.fromDate}
                     />
                     <Input
-                      label="Drop Date & Time"
-                      type="datetime-local"
-                      value={form.dropDateTime}
-                      onChange={(e) => { setForm((f) => ({ ...f, dropDateTime: e.target.value })); setFieldErrors((p) => ({ ...p, dropDateTime: undefined })); }}
-                      error={fieldErrors.dropDateTime}
+                      label="To Date"
+                      type="date"
+                      value={form.toDate}
+                      onChange={(e) => {
+                        setForm((f) => ({ ...f, toDate: e.target.value }));
+                        setFieldErrors((p) => ({ ...p, toDate: undefined }));
+                      }}
+                      error={fieldErrors.toDate}
                     />
-                    <Input label="Opening KM" type="number" min={0} value={form.openingKm} onChange={(e) => { setForm((f) => ({ ...f, openingKm: e.target.value })); setFieldErrors((p) => ({ ...p, openingKm: undefined, closingKm: undefined })); }} error={fieldErrors.openingKm} />
-                    <Input label="Closing KM" type="number" min={0} value={form.closingKm} onChange={(e) => { setForm((f) => ({ ...f, closingKm: e.target.value })); setFieldErrors((p) => ({ ...p, closingKm: undefined })); }} error={fieldErrors.closingKm} />
                   </div>
-                  {totalKm !== null && Number.isFinite(totalKm) ? (
-                    <p className="mt-2 text-sm text-gray-600">Total KM: <strong>{totalKm}</strong></p>
-                  ) : null}
+                  <div className="mt-4">
+                    <TextArea
+                      label="Description"
+                      rows={5}
+                      placeholder="Vehicle, route, toll, parking, and other details"
+                      value={form.description}
+                      onChange={(e) => {
+                        setForm((f) => ({ ...f, description: e.target.value }));
+                        setFieldErrors((p) => ({ ...p, description: undefined }));
+                      }}
+                      error={fieldErrors.description}
+                    />
+                  </div>
                 </div>
 
                 {/* Charges */}
                 <div className="border-t border-gray-200 pt-4">
                   <h3 className="text-sm font-semibold text-gray-900 mb-3">Charges</h3>
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <Input label="Parking" type="number" min={0} value={form.parkingCharges} onChange={(e) => setForm((f) => ({ ...f, parkingCharges: e.target.value }))} />
-                    <Input label="Toll" type="number" min={0} value={form.tollCharges} onChange={(e) => setForm((f) => ({ ...f, tollCharges: e.target.value }))} />
                     <Input label="Total Amount" type="number" min={0} value={form.amount} onChange={(e) => { setForm((f) => ({ ...f, amount: e.target.value })); setFieldErrors((p) => ({ ...p, amount: undefined, amountReceived: undefined })); }} error={fieldErrors.amount} />
                     <Input label="Amount Received" type="number" min={0} value={form.amountReceived} onChange={(e) => { setForm((f) => ({ ...f, amountReceived: e.target.value })); setFieldErrors((p) => ({ ...p, amountReceived: undefined })); }} error={fieldErrors.amountReceived} />
                   </div>

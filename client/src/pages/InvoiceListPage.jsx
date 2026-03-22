@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
+import { invoiceRouteSummary } from "../lib/invoiceDisplay.js";
 import { downloadWithAuth } from "../lib/download";
 import { Button, Input, PageTitle, Select, StatusBadge } from "../components/ui.jsx";
 
@@ -163,6 +164,7 @@ export default function InvoiceListPage() {
             <tr>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Invoice</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Date</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Description</th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Total</th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Received</th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Balance</th>
@@ -173,13 +175,13 @@ export default function InvoiceListPage() {
           <tbody className="divide-y divide-gray-100 bg-white">
             {loading ? (
               <tr>
-                <td className="px-4 py-4 text-sm text-gray-600" colSpan={10}>
+                <td className="px-4 py-4 text-sm text-gray-600" colSpan={8}>
                   Loading…
                 </td>
               </tr>
             ) : data.length === 0 ? (
               <tr>
-                <td className="px-4 py-4 text-sm text-gray-600" colSpan={10}>
+                <td className="px-4 py-4 text-sm text-gray-600" colSpan={8}>
                   No invoices found.
                 </td>
               </tr>
@@ -189,6 +191,9 @@ export default function InvoiceListPage() {
                       <td className="px-4 py-3 text-sm font-semibold text-gray-900">{i.invoiceNumber}</td>
                       <td className="px-4 py-3 text-sm text-gray-700">
                         {new Date(i.journeyDate).toLocaleDateString("en-IN")}
+                      </td>
+                      <td className="max-w-xs truncate px-4 py-3 text-sm text-gray-700" title={invoiceRouteSummary(i)}>
+                        {invoiceRouteSummary(i)}
                       </td>
                       <td className="px-4 py-3 text-right text-sm text-gray-900">{inr(i.amount)}</td>
                       <td className="px-4 py-3 text-right text-sm text-gray-900">{inr(i.amountReceived)}</td>

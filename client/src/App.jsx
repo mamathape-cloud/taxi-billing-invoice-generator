@@ -11,7 +11,7 @@ import VehiclesPage from "./pages/VehiclesPage.jsx";
 import DriversPage from "./pages/DriversPage.jsx";
 import InvoiceListPage from "./pages/InvoiceListPage.jsx";
 import InvoiceFormPage from "./pages/InvoiceFormPage.jsx";
-import MonthlyReportPage from "./pages/MonthlyReportPage.jsx";
+import ReportsPage from "./pages/ReportsPage.jsx";
 
 function RequireAuth({ children }) {
   if (!isAuthed()) return <Navigate to="/login" replace />;
@@ -40,7 +40,8 @@ export default function App() {
         <Route path="invoices" element={<InvoiceListPage />} />
         <Route path="invoices/new" element={<InvoiceFormPage mode="create" />} />
         <Route path="invoices/:id/edit" element={<InvoiceFormPage mode="edit" />} />
-        <Route path="reports/monthly" element={<MonthlyReportPage />} />
+        <Route path="reports" element={<ReportsPage />} />
+        <Route path="reports/monthly" element={<Navigate to="/reports?tab=monthly" replace />} />
       </Route>
       <Route path="*" element={<Navigate to={isAuthed() ? "/dashboard" : "/login"} replace />} />
     </Routes>

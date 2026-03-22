@@ -1,6 +1,6 @@
 import { getToken, clearToken } from "./auth.js";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ||  "https://taxi-billing-server-production.up.railway.app";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
 
 async function request(path, { method = "GET", body, headers } = {}) {
   const token = getToken();
@@ -85,6 +85,8 @@ export const api = {
   deleteInvoice: (id) => request(`/invoices/${id}`, { method: "DELETE" }),
 
   downloadInvoicePdfUrl: (id) => `${API_BASE_URL}/invoices/${id}/pdf`,
+
+  dailyReport: (date) => request(`/reports/daily?date=${encodeURIComponent(date)}`),
 
   monthlyReport: (month, year) => request(`/reports/monthly?month=${month}&year=${year}`),
   monthlyReportCsvUrl: (month, year) => `${API_BASE_URL}/reports/monthly/export.csv?month=${month}&year=${year}`,

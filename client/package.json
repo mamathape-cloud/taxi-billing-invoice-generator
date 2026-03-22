@@ -10,6 +10,8 @@
   "preview": "vite preview",
   "lint": "eslint ."
  },
+
+
  
   "dependencies": {
     "chart.js": "^4.4.8",

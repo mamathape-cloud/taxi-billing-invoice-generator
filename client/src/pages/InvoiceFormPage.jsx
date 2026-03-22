@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { downloadWithAuth } from "../lib/download";
-import { Button, Input, PageTitle, Select, TextArea } from "../components/ui.jsx";
+import { Button, Input, PageTitle, TextArea } from "../components/ui.jsx";
 
 function toISODate(d) {
   if (!d) return "";
@@ -51,16 +51,9 @@ export default function InvoiceFormPage({ mode }) {
     vehicleId: "",
     driverId: "",
     journeyDate: toISODate(new Date()),
-    tripFrom: "",
-    tripTo: "",
+    description: "",
     fromDate: toISODate(new Date()),
     toDate: toISODate(new Date()),
-    pickupTime: "",
-    closingTime: "",
-    openingKm: 0,
-    closingKm: 0,
-    tollCharges: 0,
-    parkingCharges: 0,
     amount: 0,
     amountReceived: 0
   });
@@ -86,16 +79,13 @@ export default function InvoiceFormPage({ mode }) {
             vehicleId: inv.vehicleId,
             driverId: inv.driverId || "",
             journeyDate: toISODate(inv.journeyDate),
-            tripFrom: inv.tripFrom,
-            tripTo: inv.tripTo,
+            description:
+              (inv.description && String(inv.description).trim()) ||
+              (inv.tripFrom && inv.tripTo && inv.tripFrom !== "-"
+                ? `${inv.tripFrom} → ${inv.tripTo}`
+                : ""),
             fromDate: toISODate(inv.fromDate),
             toDate: toISODate(inv.toDate),
-            pickupTime: inv.pickupTime || "",
-            closingTime: inv.closingTime || "",
-            openingKm: Number(inv.openingKm),
-            closingKm: Number(inv.closingKm),
-            tollCharges: Number(inv.tollCharges),
-            parkingCharges: Number(inv.parkingCharges),
             amount: Number(inv.amount),
             amountReceived: Number(inv.amountReceived)
           });
@@ -118,7 +108,6 @@ export default function InvoiceFormPage({ mode }) {
 
   const customer = useMemo(() => customers.find((c) => c.id === form.customerId), [customers, form.customerId]);
   const numberOfDays = useMemo(() => diffDaysInclusive(form.fromDate, form.toDate), [form.fromDate, form.toDate]);
-  const totalKm = useMemo(() => Number(form.closingKm) - Number(form.openingKm), [form.openingKm, form.closingKm]);
   const balanceAmount = useMemo(
     () => Number(form.amount || 0) - Number(form.amountReceived || 0),
     [form.amount, form.amountReceived]
@@ -290,11 +279,8 @@ export default function InvoiceFormPage({ mode }) {
 
   function validateForm() {
     const errs = {};
-    if (!form.tripFrom || !form.tripFrom.trim()) {
-      errs.tripFrom = "From Trip cannot be empty.";
-    }
-    if (!form.tripTo || !form.tripTo.trim()) {
-      errs.tripTo = "To Trip cannot be empty.";
+    if (!form.description || !form.description.trim()) {
+      errs.description = "Description cannot be empty.";
     }
     if (!form.customerId) {
       errs.customerId = "Please select a customer or add a new one.";
@@ -309,11 +295,6 @@ export default function InvoiceFormPage({ mode }) {
     const to = new Date(form.toDate);
     if (form.fromDate && form.toDate && to < from) {
       errs.toDate = "To Date cannot be earlier than From Date.";
-    }
-    const openingKm = Number(form.openingKm);
-    const closingKm = Number(form.closingKm);
-    if (Number.isFinite(openingKm) && Number.isFinite(closingKm) && closingKm < openingKm) {
-      errs.closingKm = "Closing KM cannot be less than Opening KM.";
     }
     const amount = Number(form.amount);
     const amountReceived = Number(form.amountReceived || 0);
@@ -341,16 +322,21 @@ export default function InvoiceFormPage({ mode }) {
       }
 
       const payload = {
-        ...form,
-        openingKm: Number(form.openingKm),
-        closingKm: Number(form.closingKm),
-        tollCharges: Number(form.tollCharges || 0),
-        parkingCharges: Number(form.parkingCharges || 0),
-        amount: Number(form.amount),
-        amountReceived: Number(form.amountReceived || 0),
+        customerId: form.customerId,
+        vehicleId: form.vehicleId,
+        driverId: form.driverId,
         journeyDate: new Date(form.journeyDate).toISOString(),
+        description: form.description.trim(),
         fromDate: new Date(form.fromDate).toISOString(),
-        toDate: new Date(form.toDate).toISOString()
+        toDate: new Date(form.toDate).toISOString(),
+        pickupTime: null,
+        closingTime: null,
+        openingKm: 0,
+        closingKm: 0,
+        tollCharges: 0,
+        parkingCharges: 0,
+        amount: Number(form.amount),
+        amountReceived: Number(form.amountReceived || 0)
       };
       if (mode === "edit") {
         const updated = await api.updateInvoice(invoiceId, payload);
@@ -593,10 +579,17 @@ export default function InvoiceFormPage({ mode }) {
 
             <Input label="Journey Date" type="date" value={form.journeyDate} onChange={(e) => setForm((f) => ({ ...f, journeyDate: e.target.value }))} />
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Input label="Trip From" value={form.tripFrom} onChange={(e) => { setForm((f) => ({ ...f, tripFrom: e.target.value })); setFieldErrors((p) => ({ ...p, tripFrom: undefined })); }} error={fieldErrors.tripFrom} />
-              <Input label="Trip To" value={form.tripTo} onChange={(e) => { setForm((f) => ({ ...f, tripTo: e.target.value })); setFieldErrors((p) => ({ ...p, tripTo: undefined })); }} error={fieldErrors.tripTo} />
-            </div>
+            <TextArea
+              label="Description"
+              rows={5}
+              placeholder="Vehicle, route, toll, parking, and other trip details"
+              value={form.description}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, description: e.target.value }));
+                setFieldErrors((p) => ({ ...p, description: undefined }));
+              }}
+              error={fieldErrors.description}
+            />
 
             <div className="grid gap-4 sm:grid-cols-3">
               <Input label="From Date" type="date" value={form.fromDate} onChange={(e) => { setForm((f) => ({ ...f, fromDate: e.target.value })); setFieldErrors((p) => ({ ...p, toDate: undefined })); }} />
@@ -604,36 +597,12 @@ export default function InvoiceFormPage({ mode }) {
               <Input label="Number of Days" value={numberOfDays} disabled />
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-3">
-              <Input label="Opening KM" type="number" value={form.openingKm} onChange={(e) => { setForm((f) => ({ ...f, openingKm: e.target.value })); setFieldErrors((p) => ({ ...p, closingKm: undefined })); }} />
-              <Input label="Closing KM" type="number" value={form.closingKm} onChange={(e) => { setForm((f) => ({ ...f, closingKm: e.target.value })); setFieldErrors((p) => ({ ...p, closingKm: undefined })); }} error={fieldErrors.closingKm} />
-              <Input label="Total KM" value={Number.isFinite(totalKm) ? totalKm : ""} disabled />
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Input
-                label="Pickup Time"
-                type="time"
-                value={form.pickupTime}
-                onChange={(e) => setForm((f) => ({ ...f, pickupTime: e.target.value }))}
-              />
-              <Input
-                label="Closing Time"
-                type="time"
-                value={form.closingTime}
-                onChange={(e) => setForm((f) => ({ ...f, closingTime: e.target.value }))}
-              />
-            </div>
           </div>
 
           <div className="space-y-4">
             <div className="rounded-xl bg-gray-50 p-4 ring-1 ring-gray-200">
               <div className="mb-3 text-sm font-semibold text-gray-900">Charges</div>
               <div className="grid gap-4 sm:grid-cols-2">
-                <Input label="Toll Charges" type="number" value={form.tollCharges} onChange={(e) => setForm((f) => ({ ...f, tollCharges: e.target.value }))} />
-                <Input label="Parking Charges" type="number" value={form.parkingCharges} onChange={(e) => setForm((f) => ({ ...f, parkingCharges: e.target.value }))} />
-              </div>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <Input label="Total Amount" type="number" value={form.amount} onChange={(e) => { setForm((f) => ({ ...f, amount: e.target.value })); setFieldErrors((p) => ({ ...p, amount: undefined, amountReceived: undefined })); }} error={fieldErrors.amount} />
                 <Input label="Amount Received" type="number" value={form.amountReceived} onChange={(e) => { setForm((f) => ({ ...f, amountReceived: e.target.value })); setFieldErrors((p) => ({ ...p, amountReceived: undefined })); }} error={fieldErrors.amountReceived} />
               </div>
@@ -646,8 +615,6 @@ export default function InvoiceFormPage({ mode }) {
               <div className="text-sm font-semibold text-gray-900">Auto Calculations</div>
               <div className="mt-2 text-sm text-gray-700">
                 Days: <span className="font-medium text-gray-900">{numberOfDays}</span>
-                <br />
-                Total KM: <span className="font-medium text-gray-900">{Number.isFinite(totalKm) ? totalKm : "-"}</span>
                 <br />
                 Balance: <span className="font-medium text-gray-900">{Number.isFinite(balanceAmount) ? balanceAmount : "-"}</span>
               </div>

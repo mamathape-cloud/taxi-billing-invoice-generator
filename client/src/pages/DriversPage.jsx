@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
+import { invoiceRouteSummary } from "../lib/invoiceDisplay.js";
 import { Button, Input, PageTitle, StatusBadge, TextArea } from "../components/ui.jsx";
 
 function emptyForm() {
@@ -210,8 +211,8 @@ export default function DriversPage() {
                       <StatusBadge status={i.paymentStatus} />
                     </div>
                     <div className="mt-1 text-xs text-gray-600">
-                      {new Date(i.journeyDate).toLocaleDateString("en-IN")} • {i.tripFrom} →{" "}
-                      {i.tripTo} • {i.vehicle?.vehicleNumber}
+                      {new Date(i.journeyDate).toLocaleDateString("en-IN")} • {invoiceRouteSummary(i)} •{" "}
+                      {i.vehicle?.vehicleNumber}
                     </div>
                   </div>
                 ))}

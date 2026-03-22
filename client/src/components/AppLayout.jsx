@@ -9,7 +9,7 @@ const nav = [
   { to: "/vehicles", label: "Vehicles" },
   { to: "/drivers", label: "Drivers" },
   { to: "/invoices", label: "Invoices" },
-  { to: "/reports/monthly", label: "Monthly Report" }
+  { to: "/reports", label: "Reports" }
 ];
 
 function cls(isActive) {

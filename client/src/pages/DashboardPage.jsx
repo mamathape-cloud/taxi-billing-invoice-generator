@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
-import { Card, PageTitle } from "../components/ui.jsx";
+import { Button, Card, PageTitle } from "../components/ui.jsx";
 
 function inr(n) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(Number(n || 0));
 }
 
 export default function DashboardPage() {
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [company, setCompany] = useState(null);
@@ -61,7 +63,12 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <PageTitle title="Dashboard" />
+      <PageTitle
+        title="Dashboard"
+        right={
+          <Button onClick={() => navigate("/invoices/new")}>Create Invoice</Button>
+        }
+      />
 
       <div className="mb-4 rounded-xl bg-white p-6 ring-1 ring-gray-200">
         <div className="flex flex-col gap-4 md:flex-row md:items-center">
