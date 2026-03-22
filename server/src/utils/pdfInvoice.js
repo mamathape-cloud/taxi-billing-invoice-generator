@@ -5,6 +5,9 @@ import path from "path";
 const STROKE = "#111827";
 const PAD = 40;
 
+const TERMS_TEXT =
+  "Thank you, It was a pleasure serving you. We hope to see you again soon.";
+
 function formatDate(d) {
   const dt = new Date(d);
   return dt.toLocaleDateString("en-IN");
@@ -15,12 +18,26 @@ function money(n) {
   return num.toFixed(2);
 }
 
+/** Rs. prefix avoids Helvetica mis-rendering Unicode ₹ as superscript "1" in PDFKit */
+function moneyLabel(n) {
+  return `Rs. ${money(n)}`;
+}
+
 function localPathFromUploadsUrl(url) {
   if (!url) return null;
   const idx = url.indexOf("/uploads/");
   if (idx === -1) return null;
   const rel = url.substring(idx + "/uploads/".length);
   return path.join(process.cwd(), "uploads", rel);
+}
+
+/** Strip leading ASCII/en-dash/em-dash from phone for PDF display only */
+function displayPhone(s) {
+  if (s == null || String(s).trim() === "") return "-";
+  let t = String(s).trim();
+  if (t === "-") return "-";
+  t = t.replace(/^[\u002D\u2013\u2014]+/, "").trim();
+  return t || "-";
 }
 
 // Basic INR words converter for invoice display (supports up to crores)
@@ -96,7 +113,7 @@ function companyPhoneLines(phone) {
     .filter(Boolean);
 }
 
-/** First phone for inline "Phone:" row; rest shown under Mob: top-right */
+/** First raw segment for Phone row (display via displayPhone) */
 function primaryPhoneLine(phones) {
   if (!phones.length) return "-";
   return phones[0];
@@ -123,19 +140,13 @@ export async function generateInvoicePdfBuffer({ invoice, company }) {
   });
 
   const pageW = doc.page.width;
-  const pageH = doc.page.height;
   const left = PAD;
   const right = pageW - PAD;
   const contentW = right - left;
-
-  const framePad = 2;
-  const frameLeft = left - framePad;
-  const frameRight = right + framePad;
+  const half = contentW / 2;
+  const innerPad = 8;
 
   let y = PAD;
-
-  // --- Outer frame (drawn after layout using endY; we record start) ---
-  const frameStartY = y - 4;
 
   // 1) Title: Tax Invoice (top, centered)
   doc.fillColor("#111827");
@@ -170,7 +181,7 @@ export async function generateInvoicePdfBuffer({ invoice, company }) {
   doc.font("Helvetica").fontSize(9);
   if (phones.length) {
     for (const p of phones.slice(0, 4)) {
-      doc.text(p, mobX, mobY, { width: 120, align: "right" });
+      doc.text(displayPhone(p), mobX, mobY, { width: 120, align: "right" });
       mobY += 11;
     }
   } else {
@@ -191,12 +202,12 @@ export async function generateInvoicePdfBuffer({ invoice, company }) {
   doc.font("Helvetica").fontSize(9).text(addrStr, left + 8, y, { width: contentW - 16, align: "center" });
   y += doc.heightOfString(addrStr, { width: contentW - 16 }) + 8;
 
-  const phoneDisplay = primaryPhoneLine(phones);
+  const phoneDisplay = displayPhone(primaryPhoneLine(phones));
   const emailStr = company?.email || "";
   doc.font("Helvetica").fontSize(9);
-  doc.text(`Phone: ${phoneDisplay}`, left + 12, y, { width: contentW / 2 - 20, align: "left" });
+  doc.text(`Phone: ${phoneDisplay}`, left + 12, y, { width: half - 24, align: "left" });
   if (emailStr) {
-    doc.text(`Email: ${emailStr}`, left + contentW / 2, y, { width: contentW / 2 - 12, align: "right" });
+    doc.text(`Email: ${emailStr}`, left + half, y, { width: half - 12, align: "right" });
   }
   y += 14;
 
@@ -208,118 +219,114 @@ export async function generateInvoicePdfBuffer({ invoice, company }) {
   doc.rect(left, companyBoxTop, contentW, y - companyBoxTop).stroke(STROKE);
   y += 12;
 
-  // 3) Bill To | Invoice details
-  const colW = contentW / 2 - 6;
+  // 3) Bill To | Invoice details — strict 50% / 50%
   const boxH = 72;
-  doc.rect(left, y, colW, boxH).stroke(STROKE);
-  doc.rect(left + colW + 12, y, colW, boxH).stroke(STROKE);
+  doc.rect(left, y, half, boxH).stroke(STROKE);
+  doc.rect(left + half, y, half, boxH).stroke(STROKE);
 
-  let yb = y + 8;
-  doc.font("Helvetica-Bold").fontSize(10).text("Bill To:", left + 8, yb);
+  const colInnerW = half - 2 * innerPad;
+  let yb = y + innerPad;
+  doc.font("Helvetica-Bold").fontSize(10).text("Bill To:", left + innerPad, yb);
   yb += 14;
-  doc.font("Helvetica").fontSize(9).text(invoice.customer?.name || "-", left + 8, yb, { width: colW - 16 });
+  doc.font("Helvetica").fontSize(9).text(invoice.customer?.name || "-", left + innerPad, yb, { width: colInnerW });
   yb += 12;
   doc
     .font("Helvetica")
     .fontSize(9)
-    .text(`Contact No: ${invoice.customer?.phone || "-"}`, left + 8, yb, { width: colW - 16 });
+    .text(
+      `Contact No: ${displayPhone(invoice.customer?.phone)}`,
+      left + innerPad,
+      yb,
+      { width: colInnerW }
+    );
 
-  let yi = y + 8;
-  doc.font("Helvetica-Bold").fontSize(10).text("Invoice Details:", left + colW + 20, yi);
+  const invX = left + half + innerPad;
+  let yi = y + innerPad;
+  doc.font("Helvetica-Bold").fontSize(10).text("Invoice Details:", invX, yi);
   yi += 14;
-  doc.font("Helvetica").fontSize(9).text(`No: ${invoice.invoiceNumber}`, left + colW + 20, yi, { width: colW - 16 });
+  doc.font("Helvetica").fontSize(9).text(`No: ${invoice.invoiceNumber}`, invX, yi, { width: colInnerW });
   yi += 12;
-  doc
-    .font("Helvetica")
-    .fontSize(9)
-    .text(`Date: ${formatDate(invoice.journeyDate)}`, left + colW + 20, yi, { width: colW - 16 });
+  doc.font("Helvetica").fontSize(9).text(`Date: ${formatDate(invoice.journeyDate)}`, invX, yi, { width: colInnerW });
 
   y += boxH + 12;
 
-  // 4) Middle row: empty left + financial summary right (same outer height)
-  const finW = Math.min(240, Math.floor(contentW * 0.42));
-  const leftColW = contentW - finW - 12;
+  // 4) Middle row: empty left 50% + financial summary right 50%
   const finH = 100;
-  doc.rect(left, y, leftColW, finH).stroke(STROKE);
-  doc.rect(left + leftColW + 12, y, finW, finH).stroke(STROKE);
+  doc.rect(left, y, half, finH).stroke(STROKE);
+  doc.rect(left + half, y, half, finH).stroke(STROKE);
 
-  const finX = left + leftColW + 12;
+  const finX = left + half + innerPad;
+  const finW = half - 2 * innerPad;
   let fy = y + 10;
-  doc.font("Helvetica-Bold").fontSize(9).text("Total:", finX + 8, fy, { width: 72 });
-  doc.font("Helvetica").fontSize(9).text(`₹ ${money(invoice.amount)}`, finX + 80, fy, { width: finW - 92, align: "right" });
+  doc.font("Helvetica-Bold").fontSize(9).text("Total:", finX, fy, { width: 72 });
+  doc.font("Helvetica").fontSize(9).text(moneyLabel(invoice.amount), finX + 72, fy, { width: finW - 80, align: "right" });
   fy += 14;
-  doc.font("Helvetica-Bold").fontSize(8).text("Invoice Amount In Words:", finX + 8, fy, { width: finW - 16 });
+  doc.font("Helvetica-Bold").fontSize(8).text("Invoice Amount In Words:", finX, fy, { width: finW });
   fy += 11;
-  doc.font("Helvetica").fontSize(8).text(numberToWordsINR(invoice.amount), finX + 8, fy, { width: finW - 16 });
+  doc.font("Helvetica").fontSize(8).text(numberToWordsINR(invoice.amount), finX, fy, { width: finW });
   fy += 24;
-  doc.font("Helvetica-Bold").fontSize(9).text("Received:", finX + 8, fy, { width: 72 });
-  doc.font("Helvetica").fontSize(9).text(`₹ ${money(invoice.amountReceived)}`, finX + 80, fy, {
-    width: finW - 92,
+  doc.font("Helvetica-Bold").fontSize(9).text("Received:", finX, fy, { width: 72 });
+  doc.font("Helvetica").fontSize(9).text(moneyLabel(invoice.amountReceived), finX + 72, fy, {
+    width: finW - 80,
     align: "right"
   });
   fy += 14;
-  doc.font("Helvetica-Bold").fontSize(9).text("Balance:", finX + 8, fy, { width: 72 });
-  doc.font("Helvetica").fontSize(9).text(`₹ ${money(invoice.balanceAmount)}`, finX + 80, fy, {
-    width: finW - 92,
+  doc.font("Helvetica-Bold").fontSize(9).text("Balance:", finX, fy, { width: 72 });
+  doc.font("Helvetica").fontSize(9).text(moneyLabel(invoice.balanceAmount), finX + 72, fy, {
+    width: finW - 80,
     align: "right"
   });
 
   y += finH + 12;
 
-  // 5) Description | Terms
-  const descColW = contentW / 2 - 6;
+  // 5) Description | Terms — 50% / 50%, auto height
   const descText = invoiceDescriptionText(invoice);
   doc.font("Helvetica").fontSize(9);
-  const descTextH = doc.heightOfString(descText, { width: descColW - 16 });
-  const termsH = doc.heightOfString("Thank you for doing business with us.", { width: descColW - 16 });
-  const bottomBoxH = Math.max(100, descTextH + 36, termsH + 36);
+  const descTextH = doc.heightOfString(descText, { width: colInnerW });
+  const termsH = doc.heightOfString(TERMS_TEXT, { width: colInnerW });
+  const headerBand = 24;
+  const bottomBoxH = Math.max(72, descTextH + headerBand + 8, termsH + headerBand + 8);
 
-  doc.rect(left, y, descColW, bottomBoxH).stroke(STROKE);
-  doc.rect(left + descColW + 12, y, descColW, bottomBoxH).stroke(STROKE);
+  doc.rect(left, y, half, bottomBoxH).stroke(STROKE);
+  doc.rect(left + half, y, half, bottomBoxH).stroke(STROKE);
 
-  doc.font("Helvetica-Bold").fontSize(10).text("Description:", left + 8, y + 8);
-  doc.font("Helvetica").fontSize(9).text(descText, left + 8, y + 24, { width: descColW - 16 });
+  doc.font("Helvetica-Bold").fontSize(10).text("Description:", left + innerPad, y + innerPad);
+  doc.font("Helvetica").fontSize(9).text(descText, left + innerPad, y + innerPad + 14, { width: colInnerW });
 
-  doc.font("Helvetica-Bold").fontSize(10).text("Terms And Conditions:", left + descColW + 20, y + 8);
-  doc
-    .font("Helvetica")
-    .fontSize(9)
-    .text("Thank you for doing business with us.", left + descColW + 20, y + 24, { width: descColW - 16 });
+  const termsX = left + half + innerPad;
+  doc.font("Helvetica-Bold").fontSize(10).text("Terms And Conditions:", termsX, y + innerPad);
+  doc.font("Helvetica").fontSize(9).text(TERMS_TEXT, termsX, y + innerPad + 14, { width: colInnerW });
 
   y += bottomBoxH + 16;
 
-  // 6) Signature (no driver / vehicle phone on PDF)
+  // 6) Signature — centered on page, aligned with Authorized Signatory
   const sigPath = localPathFromUploadsUrl(company?.signatureUrl);
-  const sigW = 160;
-  const sigX = right - sigW;
-  const companyShort = company?.companyName || "Company";
-  doc.font("Helvetica").fontSize(9).text(`For ${companyShort}:`, sigX, y, { width: sigW, align: "center" });
-  y += 14;
+  const centerX = left + contentW / 2;
+  const sigBlockW = 180;
+  const sigLeft = centerX - sigBlockW / 2;
+  const fitW = sigBlockW - 24;
+  const fitH = 50;
+
   if (sigPath && fs.existsSync(sigPath)) {
     try {
-      doc.image(sigPath, sigX + 10, y, { fit: [sigW - 20, 50] });
+      doc.image(sigPath, centerX - fitW / 2, y, { fit: [fitW, fitH] });
     } catch {
-      doc.font("Helvetica").fontSize(8).fillColor("#9CA3AF").text("(Signature)", sigX, y + 16, {
-        width: sigW,
+      doc.font("Helvetica").fontSize(8).fillColor("#9CA3AF").text("(Signature)", sigLeft, y + 16, {
+        width: sigBlockW,
         align: "center"
       });
     }
   } else {
-    doc.font("Helvetica").fontSize(8).fillColor("#9CA3AF").text("(Signature)", sigX, y + 16, {
-      width: sigW,
+    doc.font("Helvetica").fontSize(8).fillColor("#9CA3AF").text("(Signature)", sigLeft, y + 16, {
+      width: sigBlockW,
       align: "center"
     });
   }
   doc.fillColor("#111827");
-  doc.font("Helvetica-Bold").fontSize(9).text("Authorized Signatory", sigX, y + 56, { width: sigW, align: "center" });
-
-  y += 88;
-
-  // Outer frame around main invoice body
-  const frameEndY = Math.min(y + 8, pageH - PAD);
-  doc.lineWidth(0.8);
-  doc.rect(frameLeft, frameStartY, frameRight - frameLeft, frameEndY - frameStartY).stroke(STROKE);
-  doc.lineWidth(1);
+  doc.font("Helvetica-Bold").fontSize(9).text("Authorized Signatory", sigLeft, y + 56, {
+    width: sigBlockW,
+    align: "center"
+  });
 
   doc.end();
   return await done;
